@@ -27,10 +27,11 @@ SCORE_COLUMNS = [
 
 # --- embedding cache -----------------------------------------------------------
 def save_embeddings(account_id: str, creatives: list[Creative]) -> None:
-    cache = _load_all_embeddings()
-    cache[account_id] = creatives
+    data = _load_all_embeddings()
+    data[account_id] = creatives
+    envelope = {"__version__": config.EMBED_CACHE_VERSION, "data": data}
     with open(config.EMBED_CACHE, "wb") as fh:
-        pickle.dump(cache, fh)
+        pickle.dump(envelope, fh)
 
 
 def load_embeddings(account_id: str) -> Optional[list[Creative]]:
@@ -38,12 +39,16 @@ def load_embeddings(account_id: str) -> Optional[list[Creative]]:
 
 
 def _load_all_embeddings() -> dict[str, list[Creative]]:
+    """Load the cache, but treat a version mismatch (old Creative schema) as empty
+    so it rebuilds instead of unpickling stale objects that lack new attributes."""
     if config.EMBED_CACHE.exists():
         try:
             with open(config.EMBED_CACHE, "rb") as fh:
-                return pickle.load(fh)
+                blob = pickle.load(fh)
+            if isinstance(blob, dict) and blob.get("__version__") == config.EMBED_CACHE_VERSION:
+                return blob.get("data", {})
         except Exception:  # noqa: BLE001 - stale/corrupt cache → rebuild
-            return {}
+            pass
     return {}
 
 

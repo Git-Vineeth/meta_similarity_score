@@ -47,6 +47,7 @@ DEFAULT_ACCOUNT = "888586384639855"
 DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 EMBED_CACHE = DATA_DIR / "active_embeddings.pkl"       # {account_id: [CreativeRecord,...]}
+EMBED_CACHE_VERSION = 2                                 # bump when the Creative schema changes → auto-invalidates stale cache
 SCORES_TABLE = DATA_DIR / "creative_similarity.parquet"  # the "separate table"
 
 # How many neighbours to surface per modality in the UI.

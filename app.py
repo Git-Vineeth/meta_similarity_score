@@ -156,7 +156,7 @@ with tab_monitor:
             })
             prog.progress((i + 1) / max(len(active), 1))
         df = pd.DataFrame(rows).sort_values("score", ascending=False)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
         n_high = int((df["verdict"] == "high-overlap").sum())
         st.metric("High-overlap creatives", n_high)
 
@@ -169,5 +169,5 @@ with tab_history:
         st.caption("No scores yet — run a pre-flight or a scan.")
     else:
         st.dataframe(df.sort_values("scored_at", ascending=False),
-                     use_container_width=True, hide_index=True)
+                     width="stretch", hide_index=True)
         st.caption(f"{len(df)} rows · {config.SCORES_TABLE}")
