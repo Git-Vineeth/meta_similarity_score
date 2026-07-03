@@ -1,0 +1,12 @@
+# Creative Similarity Score prototype — pinned-ish, CPU-friendly (16GB Mac OK)
+streamlit>=1.36
+sentence-transformers>=3.0     # provides both clip-ViT-B-32 (visual) and all-MiniLM-L6-v2 (text)
+torch>=2.2                     # pulled by sentence-transformers; CPU wheel is fine
+pillow>=10.0                   # image loading for CLIP
+numpy>=1.26
+pandas>=2.0
+pyarrow>=15.0                  # parquet store for the creative_similarity table
+requests>=2.31                 # Meta Marketing API calls
+python-dotenv>=1.0
+# Optional — only needed for video keyframe embedding (v1.1):
+# opencv-python-headless>=4.9
