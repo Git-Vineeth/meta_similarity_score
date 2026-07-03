@@ -63,6 +63,35 @@ def embed_text(title: str = "", body: str = "") -> Optional[np.ndarray]:
     return np.asarray(vec, dtype=np.float32)
 
 
+def _mean_normalize(vecs: list[np.ndarray]) -> Optional[np.ndarray]:
+    """Mean-pool a set of unit vectors, then re-normalize so cosine == dot still holds."""
+    if not vecs:
+        return None
+    m = np.mean(np.stack(vecs), axis=0)
+    n = np.linalg.norm(m)
+    return (m / n).astype(np.float32) if n > 0 else None
+
+
+def embed_images(sources: list) -> Optional[np.ndarray]:
+    """Embed several image sources (URLs/bytes/PIL) and mean-pool.
+
+    For dynamic creatives this pools all static images + video thumbnails into one
+    'visual centroid' for the creative. Failed/undownloadable sources are skipped.
+    """
+    vecs = [v for s in (sources or []) if (v := embed_image(s)) is not None]
+    return _mean_normalize(vecs)
+
+
+def embed_texts(texts: list) -> Optional[np.ndarray]:
+    """Embed several copy variants (bodies/titles) and mean-pool into a 'messaging centroid'."""
+    vecs = []
+    for t in texts or []:
+        v = embed_text(body=t)
+        if v is not None:
+            vecs.append(v)
+    return _mean_normalize(vecs)
+
+
 def cosine(a: Optional[np.ndarray], b: Optional[np.ndarray]) -> Optional[float]:
     """Cosine similarity for already-normalized vectors (dot product)."""
     if a is None or b is None:

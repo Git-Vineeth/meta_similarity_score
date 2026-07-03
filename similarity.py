@@ -11,7 +11,7 @@ from typing import Optional
 import numpy as np
 
 import config
-from embeddings import cosine, embed_image, embed_text
+from embeddings import cosine, embed_images, embed_texts
 from meta_client import Creative
 
 
@@ -43,10 +43,10 @@ class ScoreResult:
 def ensure_embeddings(creatives: list[Creative]) -> list[Creative]:
     """Populate visual_vec / copy_vec in place (idempotent)."""
     for c in creatives:
-        if c.visual_vec is None and c.best_image:
-            c.visual_vec = embed_image(c.best_image)
-        if c.copy_vec is None:
-            c.copy_vec = embed_text(c.title, c.body)
+        if c.visual_vec is None and c.image_sources:
+            c.visual_vec = embed_images(c.image_sources)
+        if c.copy_vec is None and c.texts:
+            c.copy_vec = embed_texts(c.texts)
     return creatives
 
 
