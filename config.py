@@ -47,14 +47,16 @@ DEFAULT_ACCOUNT = "888586384639855"
 DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 EMBED_CACHE = DATA_DIR / "active_embeddings.pkl"       # {account_id: [CreativeRecord,...]}
-EMBED_CACHE_VERSION = 2                                 # bump when the Creative schema changes → auto-invalidates stale cache
+EMBED_CACHE_VERSION = 3                                 # bump when the Creative schema changes → auto-invalidates stale cache
 SCORES_TABLE = DATA_DIR / "creative_similarity.parquet"  # the "separate table"
 
 # How many neighbours to surface per modality in the UI.
 TOP_N = 5
 
 # --- Embedding performance knobs ----------------------------------------------
-MAX_IMAGES_PER_CREATIVE = 3   # cap; marginal thumbnails add little, cost a lot
+MAX_IMAGES_PER_CREATIVE = 8   # cap on total frames+images embedded per creative
+MAX_FRAMES_PER_VIDEO = 3      # keyframes sampled per video (evenly across duration)
+VIDEO_PAGE_BUDGET = 8         # max advideos pages (x50) to scan for keyframes before giving up
 EMBED_BATCH = 32              # batch size for CLIP/MiniLM .encode()
 DOWNLOAD_WORKERS = 8          # parallel image downloads
 IMAGE_TIMEOUT = 10            # seconds per image; skip slow/dead URLs fast

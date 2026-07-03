@@ -34,7 +34,8 @@ class Creative:
     title: str = ""                       # representative headline (for display)
     body: str = ""                        # representative primary text (for display)
     texts: list[str] = field(default_factory=list)          # all copy variants → embed & mean-pool
-    image_sources: list[str] = field(default_factory=list)  # all image URLs → embed & mean-pool
+    image_sources: list[str] = field(default_factory=list)  # all image URLs (incl. video keyframes) → embed & mean-pool
+    video_ids: list[str] = field(default_factory=list)      # for keyframe enrichment
     is_active: bool = True
     # filled in by the scorer:
     visual_vec: Optional[object] = field(default=None, repr=False)
@@ -67,9 +68,18 @@ def _images_from_feed(feed: dict) -> list[str]:
         if url:
             out.append(url)
     for vid in feed.get("videos", []) or []:
-        thumb = vid.get("thumbnail_url")
+        thumb = vid.get("thumbnail_url")   # poster frame; keyframes added later
         if thumb:
             out.append(thumb)
+    return out
+
+
+def _video_ids_from_feed(feed: dict) -> list[str]:
+    out = []
+    for vid in feed.get("videos", []) or []:
+        v = vid.get("video_id")
+        if v:
+            out.append(str(v))
     return out
 
 
@@ -94,6 +104,7 @@ def _parse_creative(cr: dict, account_id: str, ad_name: str = "") -> Creative:
 
     texts: list[str] = []
     images: list[str] = []
+    video_ids: list[str] = []
 
     # flat fields (classic single-asset creatives)
     for v in (cr.get("title"), cr.get("body")):
@@ -102,10 +113,13 @@ def _parse_creative(cr: dict, account_id: str, ad_name: str = "") -> Creative:
     for v in (cr.get("image_url"), cr.get("thumbnail_url")):
         if v:
             images.append(v)
+    if cr.get("video_id"):
+        video_ids.append(str(cr["video_id"]))
 
     # dynamic (Advantage+) — the common Cuemath case
     texts += _texts_from_feed(feed)
     images += _images_from_feed(feed)
+    video_ids += _video_ids_from_feed(feed)
 
     # classic page-post creatives
     s_texts, s_images = _from_story_spec(story)
@@ -115,6 +129,7 @@ def _parse_creative(cr: dict, account_id: str, ad_name: str = "") -> Creative:
     # dedup, preserve order
     texts = list(dict.fromkeys(texts))
     images = list(dict.fromkeys(images))
+    video_ids = list(dict.fromkeys(video_ids))
 
     return Creative(
         creative_id=str(cr.get("id")),
@@ -124,8 +139,62 @@ def _parse_creative(cr: dict, account_id: str, ad_name: str = "") -> Creative:
         body=(texts[1] if len(texts) > 1 else (texts[0] if texts else ""))[:300],
         texts=texts,
         image_sources=images,
+        video_ids=video_ids,
         is_active=True,
     )
+
+
+# ------------------------------------------------------- video keyframes ------
+def _sample_evenly(items: list, k: int) -> list:
+    if len(items) <= k:
+        return items
+    step = len(items) / k
+    return [items[int(i * step)] for i in range(k)]
+
+
+def _select_frames(data: list[dict], k: int) -> list[str]:
+    uris = [t["uri"] for t in data if t.get("uri")]
+    preferred = [t["uri"] for t in data if t.get("is_preferred") and t.get("uri")]
+    rest = [u for u in uris if u not in preferred]
+    return (preferred + _sample_evenly(rest, max(k - len(preferred), 0)))[:k]
+
+
+def fetch_video_frames(ad_account_id: str, video_ids: list[str],
+                       k: Optional[int] = None) -> dict[str, list[str]]:
+    """Resolve video_id → up to k keyframe URLs via the account-scoped `advideos`
+    edge (the video-node `thumbnails` edge needs a scope `ads_read` tokens lack).
+    Pages newest-first, stopping once every needed id is found. Robust to failures."""
+    k = k or config.MAX_FRAMES_PER_VIDEO
+    needed = {v for v in video_ids if v}
+    result: dict[str, list[str]] = {}
+    url = f"{config.GRAPH_BASE}/act_{ad_account_id}/advideos"
+    params = {"fields": "id,thumbnails{uri,is_preferred}", "limit": 50,
+              "access_token": config.META_ACCESS_TOKEN}
+    pages = 0
+    while url and needed and pages < config.VIDEO_PAGE_BUDGET:
+        try:
+            resp = requests.get(url, params=params, timeout=45)
+            resp.raise_for_status()
+            payload = resp.json()
+        except Exception as exc:  # noqa: BLE001 - never log the URL (it carries the token)
+            print(f"[meta] advideos fetch failed: {type(exc).__name__} — falling back to poster frames")
+            break
+        for v in payload.get("data", []):
+            vid = str(v.get("id"))
+            if vid in needed:
+                frames = _select_frames((v.get("thumbnails") or {}).get("data", []) or [], k)
+                if frames:
+                    result[vid] = frames
+                needed.discard(vid)
+        pages += 1
+        # Active videos, if advideos-listed at all, are among the newest. If page 1
+        # matched none, these are dynamic placement-asset videos not in advideos —
+        # stop rather than page fruitlessly (falls back to poster frames).
+        if not result:
+            break
+        url = payload.get("paging", {}).get("next")
+        params = {}  # `next` is fully-formed
+    return result
 
 
 # ------------------------------------------------------------------- fetch ----
@@ -154,13 +223,31 @@ def fetch_active_creatives(ad_account_id: str, limit: int = 200) -> list[Creativ
                 continue
             seen.add(cid)
             parsed = _parse_creative(cr, ad_account_id, ad_name=ad.get("name", ""))
-            if parsed.texts or parsed.image_sources:   # skip empties
+            if parsed.texts or parsed.image_sources or parsed.video_ids:   # skip empties
                 out.append(parsed)
             if len(out) >= limit:
-                return out
+                break
+        if len(out) >= limit:
+            break
         url = payload.get("paging", {}).get("next")
         params = {}  # `next` is a fully-formed URL
+
+    _enrich_video_frames(out)
     return out
+
+
+def _enrich_video_frames(creatives: list[Creative]) -> None:
+    """Add multi-frame video keyframes to each creative's image_sources (in place)."""
+    all_vids = [v for c in creatives for v in c.video_ids]
+    if not all_vids:
+        return
+    account_id = creatives[0].ad_account_id
+    frames = fetch_video_frames(account_id, all_vids)
+    for c in creatives:
+        extra = [u for v in c.video_ids for u in frames.get(v, [])]
+        if extra:
+            # keyframes first (richer signal), then the poster thumbs already present
+            c.image_sources = list(dict.fromkeys(extra + c.image_sources))
 
 
 # -------------------------------------------------------------------- mock ----
