@@ -32,8 +32,9 @@ def get_active_index(account_id: str, force: bool = False):
         if cached:
             return cached
     creatives = fetch_active_creatives(account_id)
-    with st.spinner(f"Embedding {len(creatives)} active creatives (visual + copy)…"):
-        ensure_embeddings(creatives)
+    bar = st.progress(0.0, text=f"Embedding {len(creatives)} active creatives (visual + copy)…")
+    ensure_embeddings(creatives, progress=lambda f, m: bar.progress(f, text=m))
+    bar.empty()
     store.save_embeddings(account_id, creatives)
     return creatives
 

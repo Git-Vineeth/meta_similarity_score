@@ -53,6 +53,12 @@ SCORES_TABLE = DATA_DIR / "creative_similarity.parquet"  # the "separate table"
 # How many neighbours to surface per modality in the UI.
 TOP_N = 5
 
+# --- Embedding performance knobs ----------------------------------------------
+MAX_IMAGES_PER_CREATIVE = 3   # cap; marginal thumbnails add little, cost a lot
+EMBED_BATCH = 32              # batch size for CLIP/MiniLM .encode()
+DOWNLOAD_WORKERS = 8          # parallel image downloads
+IMAGE_TIMEOUT = 10            # seconds per image; skip slow/dead URLs fast
+
 
 def verdict_for(score: float) -> str:
     for threshold, label in VERDICT_BANDS:

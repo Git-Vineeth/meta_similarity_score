@@ -11,7 +11,7 @@ from typing import Optional
 import numpy as np
 
 import config
-from embeddings import cosine, embed_images, embed_texts
+from embeddings import cosine, embed_image_groups, embed_text_groups
 from meta_client import Creative
 
 
@@ -40,13 +40,23 @@ class ScoreResult:
     copy_neighbors: list[Neighbor]
 
 
-def ensure_embeddings(creatives: list[Creative]) -> list[Creative]:
-    """Populate visual_vec / copy_vec in place (idempotent)."""
-    for c in creatives:
-        if c.visual_vec is None and c.image_sources:
-            c.visual_vec = embed_images(c.image_sources)
-        if c.copy_vec is None and c.texts:
-            c.copy_vec = embed_texts(c.texts)
+def ensure_embeddings(creatives: list[Creative], progress=None) -> list[Creative]:
+    """Populate visual_vec / copy_vec in place (idempotent), batched + parallel.
+
+    `progress` is an optional callable(fraction: float, message: str) for UI feedback.
+    """
+    todo = [c for c in creatives if (c.visual_vec is None and c.image_sources)
+            or (c.copy_vec is None and c.texts)]
+    if not todo:
+        return creatives
+
+    vis = embed_image_groups([c.image_sources for c in todo], progress=progress)
+    txt = embed_text_groups([c.texts for c in todo], progress=progress)
+    for c, v, t in zip(todo, vis, txt):
+        if c.visual_vec is None:
+            c.visual_vec = v
+        if c.copy_vec is None:
+            c.copy_vec = t
     return creatives
 
 
