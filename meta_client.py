@@ -19,6 +19,29 @@ import requests
 
 import config
 
+
+class MetaAPIError(Exception):
+    """Clean, token-free Meta Graph API error for the UI to display."""
+
+
+def _raise_for_meta(resp) -> None:
+    """Raise a clean MetaAPIError on a non-OK response — never leak the token/URL."""
+    if resp.ok:
+        return
+    try:
+        err = resp.json().get("error", {})
+    except Exception:  # noqa: BLE001
+        err = {}
+    code, msg = err.get("code"), (err.get("message") or "")[:200]
+    if code == 190:
+        raise MetaAPIError(
+            "Meta access token expired or invalid — generate a fresh one and update "
+            "META_ACCESS_TOKEN in .env. (Explorer tokens are short-lived; extend via the "
+            "Access Token Debugger or use a System User token.)"
+        )
+    raise MetaAPIError(f"Meta API error {resp.status_code} (code {code}): {msg}")
+
+
 # Creative fields we request; asset_feed_spec/object_story_spec carry the real payload.
 _CREATIVE_FIELDS = (
     "id,name,object_type,body,title,image_url,thumbnail_url,video_id,"
@@ -214,7 +237,7 @@ def fetch_active_creatives(ad_account_id: str, limit: int = 200) -> list[Creativ
     seen: set[str] = set()
     while url:
         resp = requests.get(url, params=params, timeout=45)
-        resp.raise_for_status()
+        _raise_for_meta(resp)
         payload = resp.json()
         for ad in payload.get("data", []):
             cr = ad.get("creative") or {}

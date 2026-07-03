@@ -16,7 +16,7 @@ import streamlit as st
 
 import config
 import store
-from meta_client import fetch_active_creatives, using_mock
+from meta_client import MetaAPIError, fetch_active_creatives, using_mock
 from similarity import ensure_embeddings, score_candidate
 from embeddings import embed_image, embed_text
 
@@ -31,7 +31,11 @@ def get_active_index(account_id: str, force: bool = False):
         cached = store.load_embeddings(account_id)
         if cached:
             return cached
-    creatives = fetch_active_creatives(account_id)
+    try:
+        creatives = fetch_active_creatives(account_id)
+    except MetaAPIError as exc:
+        st.error(f"⚠️ {exc}")
+        st.stop()
     bar = st.progress(0.0, text=f"Embedding {len(creatives)} active creatives (visual + copy)…")
     ensure_embeddings(creatives, progress=lambda f, m: bar.progress(f, text=m))
     bar.empty()
