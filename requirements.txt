@@ -1,9 +1,14 @@
-# Creative Similarity Score prototype — pinned-ish, CPU-friendly (16GB Mac OK)
+# Creative Similarity Score prototype — pinned, CPU-friendly (16GB Mac OK).
+# Versions pinned to a known-good, mutually-compatible set: the latest
+# sentence-transformers/transformers drag in a broken transformers build
+# (NameError: name 'nn' is not defined in integrations/accelerate.py).
 streamlit>=1.36
-sentence-transformers>=3.0     # provides both clip-ViT-B-32 (visual) and all-MiniLM-L6-v2 (text)
-torch>=2.2                     # pulled by sentence-transformers; CPU wheel is fine
+sentence-transformers==3.3.1   # provides clip-ViT-B-32 (visual) + all-MiniLM-L6-v2 (text)
+transformers==4.46.3           # pinned: newer builds have an import-time NameError
+torch>=2.2,<2.6                # CPU wheel is fine
+huggingface-hub>=0.24,<0.27
 pillow>=10.0                   # image loading for CLIP
-numpy>=1.26
+numpy>=1.26,<2.0               # <2.0 avoids ABI clash with torch 2.2-2.5
 pandas>=2.0
 pyarrow>=15.0                  # parquet store for the creative_similarity table
 requests>=2.31                 # Meta Marketing API calls
